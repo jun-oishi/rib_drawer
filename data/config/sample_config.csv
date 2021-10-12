@@ -1,7 +1,7 @@
-リブファイルのパス,,sample_ribdata.csv
-プランク厚さ,mm単位,3
-リブキャップ厚さ,mm単位,1
-横ストリンガ厚さ,mm単位,1
-横ストリンガ幅,mm単位,6
-縦ストリンガ厚さ,mm単位,2
-縦ストリンガ幅,mm単位,6
+path of ribdata file,,sample_ribdata.csv
+plank thickness,[mm],3
+ribcap thickness,[mm],1
+tangent stringer thickness,[mm],1
+tangent stringer width,[mm],6
+normal stringer thickness,[mm],2
+normal stringer width,[mm],6

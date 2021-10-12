@@ -13,11 +13,11 @@ CONFIG_DIRECTORY = DATA_DIRECTORY + 'config/'
 
 
 class Config:
-    """設定ファイルを扱うためのクラス."""
+    """設定ファイルを扱うためのクラス"""
 
     def __init__(self, config_file_path):
         """設定ファイルを読み込む."""
-        with open(config_file_path, 'r') as file:
+        with open(config_file_path, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
             values = [line[2] for line in reader]
 
@@ -34,7 +34,7 @@ class Config:
 
     def read_rib_specs(self):
         """self.rib_file_path からリブの諸元を読み込む."""
-        with open(self.rib_file_path, mode='r') as file:
+        with open(self.rib_file_path, mode='r', encoding='utf-8') as file:
             reader = csv.reader(file)
             table = [row for row in reader]
             table = [
