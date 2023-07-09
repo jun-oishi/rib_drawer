@@ -4,9 +4,10 @@
 
 import numpy as np
 from scipy import interpolate
+from typing import Any
 
 NUM_POINTS_FOR_MIX = 90
-INTERP_METHOD_FOR_MIX = 'linear'
+INTERP_METHOD_FOR_MIX = "linear"
 
 
 class Airfoil:
@@ -15,11 +16,11 @@ class Airfoil:
 
     Attributes
     ----------
-    points : np.ndarray
+    __points : np.ndarray
         翼型上の点の列
     """
 
-    def __init__(self, points=[], filepath=''):
+    def __init__(self, *, points=np.array([]), filepath=""):
         """
         初期化する.
 
@@ -32,13 +33,13 @@ class Airfoil:
         filepath : string
             datファイルのパス
         """
-        if filepath != '':
-            points = np.loadtxt(filepath, skiprows=1, delimiter=' ')
+        if filepath != "":
+            points = np.loadtxt(filepath, skiprows=1, delimiter=" ")
 
-        self.points = points
+        self.__points: np.ndarray = points
         return
 
-    def get_points(self, filter='all'):
+    def get_points(self, filter="all") -> np.ndarray:
         """
         翼型上の点を取得する.
 
@@ -49,17 +50,19 @@ class Airfoil:
         filter : string
             'all' -> 全周, 'upper' -> 上面のみ, 'lower' -> 下面のみ
         """
-        if filter == 'all':
-            return self.points
-        elif filter == 'upper':
-            idx_frontend = np.argmin(self.points[:, 0])
-            return self.points[:idx_frontend+1]
-        elif filter == 'lower':
-            idx_frontend = np.argmin(self.points[:, 0])
-            return self.points[idx_frontend:]
+        if filter == "all":
+            return self.__points
+        elif filter == "upper":
+            idx_frontend = np.argmin(self.__points[:, 0])
+            return self.__points[: idx_frontend + 1]
+        elif filter == "lower":
+            idx_frontend = np.argmin(self.__points[:, 0])
+            return self.__points[idx_frontend:]
+        else:
+            raise Exception("invalid filter")
 
 
-def mix(airfoil0, airfoil1, mix_ratio):
+def mix(airfoil0: Airfoil, airfoil1: Airfoil, mix_ratio: float):
     """
     翼型を混合して新しいAirfoilインスタンスを作って返す.
 
@@ -77,10 +80,10 @@ def mix(airfoil0, airfoil1, mix_ratio):
     ------
     Airfoil
     """
-    upper_points0 = airfoil0.get_points('upper')
-    upper_points1 = airfoil1.get_points('upper')
-    lower_points0 = airfoil0.get_points('lower')
-    lower_points1 = airfoil1.get_points('lower')
+    upper_points0 = airfoil0.get_points("upper")
+    upper_points1 = airfoil1.get_points("upper")
+    lower_points0 = airfoil0.get_points("lower")
+    lower_points1 = airfoil1.get_points("lower")
 
     qx = np.linspace(0, 1, NUM_POINTS_FOR_MIX)
     interpolated = []
@@ -88,13 +91,12 @@ def mix(airfoil0, airfoil1, mix_ratio):
     for points in raw:
         interpolated.append(
             interpolate.interp1d(
-                points[:, 0], points[:, 1],
-                kind=INTERP_METHOD_FOR_MIX
+                points[:, 0], points[:, 1], kind=INTERP_METHOD_FOR_MIX
             )(qx)
         )
 
-    upper_y = interpolated[0]*mix_ratio + interpolated[1]*(1-mix_ratio)
-    lower_y = interpolated[2]*mix_ratio + interpolated[3]*(1-mix_ratio)
+    upper_y = interpolated[0] * mix_ratio + interpolated[1] * (1 - mix_ratio)
+    lower_y = interpolated[2] * mix_ratio + interpolated[3] * (1 - mix_ratio)
     y = np.concatenate([upper_y[::-1], lower_y[1:]])
     x = np.concatenate([qx[::-1], qx[1:]])
     points = np.array([x, y]).T

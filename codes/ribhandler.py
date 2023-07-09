@@ -10,49 +10,237 @@ from scipy import interpolate
 NUM_POINTS_TO_DRAW_OUTLINE = 200
 
 
-class Rib:
-    """1枚のリブを表現するクラス."""
+class Stringer:
+    """
+    ストリンガーの諸元を管理するクラス.
+
+    T字に組んだものを想定して外形の接線方向を向くものをtan、
+    外形に垂直なものをnormとする
+    位置はx座標の翼弦に対する比で表して下面の場合は負とする
+
+    Attributes
+    ----------
+    __tan_thickness : float
+    __tan_width : float
+    __norm_thickness : float
+    __norm_width : float
+    __position : float
+        ストリンガー代表位置(中央)のx座標の翼弦に対する比(0~1)
+        下面の場合は位置を-1倍して与える
+    """
 
     def __init__(
         self,
-        rib_name,
-        airfoil_name0, airfoil_name1, mix_ratio,
-        chord, aoa,
-        plank_thickness, ribcap_thickness,
-        upper_plank_end_x, lower_plank_end_x,
-        stringers,
-        beam_hole_x, beam_diameter,
-        rearspar,
-        bracing_hole_pos
+        tan_thickness: float,
+        tan_width: float,
+        norm_thickness: float,
+        norm_width: float,
+        position: float,
+    ):
+        """ストリンガの厚み等をセットする."""
+        self.__tan_thickness = tan_thickness
+        self.__tan_width = tan_width
+        self.__norm_thickness = norm_thickness
+        self.__norm_width = norm_width
+        self.__position = position
+        return
+
+    def get_hole_nodes(self, chord, rib_outline):
+        """
+        ストリンガ穴描画用の点を取得する.
+
+        ストリンガはT字に組んだものを想定して凸字形の穴を描く
+        """
+        is_upper = np.sign(self.__position)
+        stringer_x_abs = chord * np.abs(self.__position)
+        # 点列を取得する(常に左から右の順)
+        if is_upper == 1:
+            points = rib_outline.get_points("upper")[::-1, :]
+        else:
+            points = rib_outline.get_points("lower")
+
+        left_point = points[points[:, 0] < stringer_x_abs][-1]
+        right_point = points[points[:, 0] > stringer_x_abs][0]
+        sandwiching_points = np.array([left_point, right_point])
+        pinned_point = np.array(
+            [
+                stringer_x_abs,
+                np.interp(
+                    stringer_x_abs, sandwiching_points[:, 0], sandwiching_points[:, 1]
+                ),
+            ]
+        )
+        theta = np.arctan2(
+            right_point[1] - left_point[1], right_point[0] - left_point[0]
+        )
+
+        hole_nodes = pinned_point.reshape((1, 2))
+        hole_nodes = dxfdrawer.append_next_point(
+            hole_nodes, dxfdrawer.direct(self.__tan_width / 2, theta + np.pi)
+        )
+        hole_nodes = dxfdrawer.append_next_point(
+            hole_nodes,
+            dxfdrawer.direct(self.__tan_thickness, theta - is_upper * np.pi / 2),
+        )
+        hole_nodes = dxfdrawer.append_next_point(
+            hole_nodes,
+            dxfdrawer.direct((self.__tan_width - self.__norm_thickness) / 2, theta),
+        )
+        hole_nodes = dxfdrawer.append_next_point(
+            hole_nodes,
+            dxfdrawer.direct(self.__norm_width, theta - is_upper * np.pi / 2),
+        )
+        hole_nodes = dxfdrawer.append_next_point(
+            hole_nodes, dxfdrawer.direct(self.__norm_thickness, theta)
+        )
+        hole_nodes = dxfdrawer.append_next_point(
+            hole_nodes,
+            dxfdrawer.direct(self.__norm_width, theta + is_upper * np.pi / 2),
+        )
+        hole_nodes = dxfdrawer.append_next_point(
+            hole_nodes,
+            dxfdrawer.direct((self.__tan_width - self.__norm_thickness) / 2, theta),
+        )
+        hole_nodes = dxfdrawer.append_next_point(
+            hole_nodes,
+            dxfdrawer.direct(self.__tan_thickness, theta + is_upper * np.pi / 2),
+        )
+        return hole_nodes[1:]
+
+
+class RearSpar:
+    """リアスパ穴の描画に関わる変数をまとめるクラス.
+
+    Attributes
+    ----------
+    diameter : float
+        リアスパの直径[mm]
+    dist : float
+        リアスパと主桁の中心間距離[mm]
+    theta : float
+        主副桁中心を結ぶ線分と翼弦線のなす角[rad]
+    """
+
+    def __init__(self, diameter: float, dist: float, theta: float):
+        """
+        リアスパ位置をまとめる.
+
+        Parameters
+        ----------
+        diameter : float
+        dist_from_mainspar : float
+            リアスパと主桁の中心間距離
+        direction : float
+            主副桁中心を結ぶ線分と翼弦線のなす角[deg]
+            翼弦に並行真後ろ向きを0として下向きを正とする(符号を入れ替えて保存する)
+        """
+        self.__diameter = diameter
+        self.__dist = dist
+        self.__theta = -np.deg2rad(theta)
+        return
+
+    @property
+    def diameter(self) -> float:
+        return self.__diameter
+
+    @property
+    def dist(self) -> float:
+        return self.__dist
+
+    @property
+    def theta(self) -> float:
+        """[rad]"""
+        return self.__theta
+
+
+class Rib:
+    """1枚のリブを表現するクラス.
+
+    Attributes
+    ----------
+    __rib_name : str
+        リブの名前 (ファイル名にもなる)
+    __airfoil_name0 : str
+        翼型の名前
+    __airfoil_name1 : str | None
+        翼型の名前(混合する場合)
+    __mix_ratio : float
+    __chord : float
+        翼弦長[mm]
+    __aoa : float
+        迎角[deg]
+    __plank_thickness : float
+        上面、前縁プランクの厚み[mm]
+    __ribcap_thickness : float
+        リブキャップの厚み[mm]
+    __upper_plank_end_x : float
+        上面プランク下端のx座標(chordに対する比)
+    __lower_plank_end_x : float
+        下面プランク下端のx座標(chordに対する比)
+    __stringers : list of Stringer
+    __beam_hole_x : float
+        桁穴位置のx座標(chordに対する比)
+    __beam_diameter : float
+        桁穴径[mm]
+    __rearspar : RearSpar
+    __bracing_hole_pos : float
+        ブレーシング穴位置のx座標(主桁-リアスパ間の距離に対する比)
+    """
+
+    def __init__(
+        self,
+        rib_name: str,
+        airfoil_name0: str,
+        airfoil_name1: str,
+        mix_ratio: float,
+        chord: float,
+        aoa: float,
+        plank_thickness: float,
+        ribcap_thickness: float,
+        upper_plank_end_x: float,
+        lower_plank_end_x: float,
+        stringers: list[Stringer],
+        beam_hole_x: float,
+        beam_diameter: float,
+        rearspar: RearSpar,
+        bracing_hole_pos: float,
     ):
         """
         初期化メソッド.
 
         引数多いから気をつけて
         """
-        self.name = rib_name
-        self.airfoil_name0 = airfoil_name0
-        if (airfoil_name1 is None) or (airfoil_name1 == ''):
-            self.airfoil_name1 = None
+        self.__name: str = rib_name
+        self.__airfoil_name0 = airfoil_name0
+        if (airfoil_name1 is None) or (airfoil_name1 == ""):
+            self.__airfoil_name1 = None
         else:
-            self.airfoil_name1 = airfoil_name1
-        self.mix_ratio = mix_ratio
-        self.chord = chord
-        self.aoa = aoa
+            self.__airfoil_name1 = airfoil_name1
+        self.__mix_ratio = mix_ratio
+        self.__chord = chord
+        self.__aoa = aoa
 
-        self.plank_thickness = plank_thickness
-        self.ribcap_thickness = ribcap_thickness
-        self.upper_plank_end_x = upper_plank_end_x
-        self.lower_plank_end_x = lower_plank_end_x
+        self.__plank_thickness = plank_thickness
+        self.__ribcap_thickness = ribcap_thickness
+        self.__upper_plank_end_x = upper_plank_end_x
+        self.__lower_plank_end_x = lower_plank_end_x
 
-        self.stringers = stringers
+        self.__stringers = stringers
 
-        self.beam_hole_x = beam_hole_x
-        self.beam_diameter = beam_diameter
+        self.__beam_hole_x = beam_hole_x
+        self.__beam_diameter = beam_diameter
 
-        self.rearspar = rearspar
-        self.bracing_hole_pos = bracing_hole_pos
+        self.__rearspar = rearspar
+        self.__bracing_hole_pos = bracing_hole_pos
         return
+
+    @property
+    def airfoil_name0(self) -> str:
+        return self.__airfoil_name0
+
+    @property
+    def airfoil_name1(self) -> str | None:
+        return self.__airfoil_name1
 
     def draw(self, save_directory, airfoils):
         """
@@ -65,15 +253,16 @@ class Rib:
         airfoils : dict of Airfoil
             描画に必要な翼型の辞書
         """
-        if self.airfoil_name1 is not None:
+        if self.__airfoil_name1 is not None:
             airfoil = airfoilhandler.mix(
-                airfoils[self.airfoil_name0], airfoils[self.airfoil_name1],
-                self.mix_ratio
+                airfoils[self.__airfoil_name0],
+                airfoils[self.__airfoil_name1],
+                self.__mix_ratio,
             )
         else:
-            airfoil = airfoils[self.airfoil_name0]
+            airfoil = airfoils[self.__airfoil_name0]
 
-        self.file = dxfdrawer.newfile(save_directory+self.name+'.dxf')
+        self.file = dxfdrawer.newfile(save_directory + self.__name + ".dxf")
         self.draw_wing_outline(airfoil)
         self.draw_rib_outline()
         self.draw_stringer_holes()
@@ -93,12 +282,12 @@ class Rib:
         raw_points = airfoil.get_points()
         idx_sep_points = [
             np.argmax(raw_points[:, 1]),  # y座標最大の点
-            np.argmin(raw_points[:, 1])   # y座標最小の点
+            np.argmin(raw_points[:, 1]),  # y座標最小の点
         ]
         raw_sections = [
-            raw_points[:idx_sep_points[0]+1, :],
-            raw_points[idx_sep_points[0]:idx_sep_points[1]+1, :],
-            raw_points[idx_sep_points[1]:, :]
+            raw_points[: idx_sep_points[0] + 1, :],
+            raw_points[idx_sep_points[0] : idx_sep_points[1] + 1, :],
+            raw_points[idx_sep_points[1] :, :],
         ]
 
         # 前縁をはさむ区間はxyを入れ替えて補間する
@@ -126,14 +315,13 @@ class Rib:
             else:
                 interpolated_section = np.array([qx, qy]).T
             # 最後の点は重複するので落として追加
-            interpolated_points = np.concatenate([
-                interpolated_points,
-                interpolated_section[:-1]
-            ])
+            interpolated_points = np.concatenate(
+                [interpolated_points, interpolated_section[:-1]]
+            )
 
         # 各区間の最後は落としているので後縁を追加
         interpolated_points = np.concatenate([interpolated_points, [[1, 0]]])
-        scaled = interpolated_points * self.chord
+        scaled = interpolated_points * self.__chord
 
         self.file.polyline(scaled)
         chordline = np.array([[0, 0], scaled[0]])
@@ -151,29 +339,27 @@ class Rib:
         ストリンガ穴、桁穴描画のために
         描画した点を rib_outline として Airfoil インスタンスで保存する
         """
-        plank_thickness = self.plank_thickness
-        ribcap_thickness = self.ribcap_thickness
+        plank_thickness = self.__plank_thickness
+        ribcap_thickness = self.__ribcap_thickness
 
-        upper_plank_end_x_abs = self.chord * self.upper_plank_end_x
-        upper_points = self.wing_outline.get_points('upper')
+        upper_plank_end_x_abs = self.__chord * self.__upper_plank_end_x
+        upper_points = self.wing_outline.get_points("upper")
         upper_plank_end_idx = np.sum(upper_points > upper_plank_end_x_abs)
-        upper_capped = upper_points[:upper_plank_end_idx+1]
+        upper_capped = upper_points[: upper_plank_end_idx + 1]
         upper_capped = dxfdrawer.offset(upper_capped, ribcap_thickness)
 
-        lower_plank_end_x_abs = self.chord * self.lower_plank_end_x
-        lower_points = self.wing_outline.get_points('lower')
-        lower_plank_end_idx = -np.sum(lower_points > lower_plank_end_x_abs)
-        lower_capped = lower_points[lower_plank_end_idx-1:]
+        lower_plank_end_x_abs = self.__chord * self.__lower_plank_end_x
+        lower_points = self.wing_outline.get_points("lower")
+        lower_plank_end_idx = -int(np.sum(lower_points > lower_plank_end_x_abs))
+        lower_capped = lower_points[lower_plank_end_idx - 1 :]
         lower_capped = dxfdrawer.offset(lower_capped, ribcap_thickness)
 
-        front_points = self.wing_outline.get_points('all')[
+        front_points = self.wing_outline.get_points("all")[
             upper_plank_end_idx:lower_plank_end_idx
         ]
         front_planked = dxfdrawer.offset(front_points, plank_thickness)
 
-        rib_outline = np.concatenate([
-            upper_capped, front_planked, lower_capped
-        ])
+        rib_outline = np.concatenate([upper_capped, front_planked, lower_capped])
 
         # TODO: 後縁付近を線形補間で上手いことやって閉じたポリラインにしたい
 
@@ -185,10 +371,8 @@ class Rib:
 
     def draw_stringer_holes(self):
         """ストリンガの穴を描く."""
-        for stringer in self.stringers:
-            self.file.polyline(
-                stringer.get_hole_nodes(self.chord, self.rib_outline)
-            )
+        for stringer in self.__stringers:
+            self.file.polyline(stringer.get_hole_nodes(self.__chord, self.rib_outline))
 
         return True
 
@@ -198,38 +382,33 @@ class Rib:
 
         リアスパ穴の描画等で使うため桁穴中心座標を beam_hole_center として保存する
         """
-        center_x_abs = self.beam_hole_x * self.chord
-        upper_points = self.rib_outline.get_points('upper')
-        upper_y = np.interp(
-            center_x_abs, upper_points[::-1, 0], upper_points[::-1, 1]
-        )
-        lower_points = self.rib_outline.get_points('lower')
-        lower_y = np.interp(
-            center_x_abs, lower_points[:, 0], lower_points[:, 1]
-        )
+        center_x_abs = self.__beam_hole_x * self.__chord
+        upper_points = self.rib_outline.get_points("upper")
+        upper_y = np.interp(center_x_abs, upper_points[::-1, 0], upper_points[::-1, 1])
+        lower_points = self.rib_outline.get_points("lower")
+        lower_y = np.interp(center_x_abs, lower_points[:, 0], lower_points[:, 1])
 
         center_y = (upper_y + lower_y) / 2
 
         beam_hole_center = np.array([center_x_abs, center_y])
         self.beam_hole_center = beam_hole_center
-        self.file.circle(beam_hole_center, self.beam_diameter/2)
+        self.file.circle(beam_hole_center, self.__beam_diameter / 2)
 
         # 水平線、垂直線を描く
-        aoa = np.deg2rad(self.aoa)
-        left_point \
-            = self.beam_hole_center \
-            + dxfdrawer.direct(self.chord*self.beam_hole_x*1.2, aoa+np.pi)
-        right_point \
-            = left_point + dxfdrawer.direct(self.chord*1.2, aoa)
+        aoa = np.deg2rad(self.__aoa)
+        left_point = self.beam_hole_center + dxfdrawer.direct(
+            self.__chord * self.__beam_hole_x * 1.2, aoa + np.pi
+        )
+        right_point = left_point + dxfdrawer.direct(self.__chord * 1.2, aoa)
         self.file.polyline([left_point, right_point])
 
         thickness = upper_y - lower_y
-        upper_point \
-            = self.beam_hole_center \
-            + dxfdrawer.direct(thickness, aoa+np.pi/2)
-        lower_point \
-            = self.beam_hole_center \
-            + dxfdrawer.direct(thickness, aoa-np.pi/2)
+        upper_point = self.beam_hole_center + dxfdrawer.direct(
+            thickness, aoa + np.pi / 2
+        )
+        lower_point = self.beam_hole_center + dxfdrawer.direct(
+            thickness, aoa - np.pi / 2
+        )
         self.file.polyline([upper_point, lower_point])
 
         return True
@@ -241,25 +420,21 @@ class Rib:
         主桁穴の位置を利用するので draw_main_beam_hole の後に実行する
         ブレーシングの穴の描画で使うため中心の座標を rearspar_hole_center として保存する
         """
-        rearspar = self.rearspar
-        center \
-            = self.beam_hole_center \
-            + dxfdrawer.direct(rearspar.dist, np.deg2rad(rearspar.theta))
-        self.file.circle(center, rearspar.diameter/2)
+        rearspar = self.__rearspar
+        center = self.beam_hole_center + dxfdrawer.direct(
+            rearspar.dist, np.deg2rad(rearspar.theta)
+        )
+        self.file.circle(center, rearspar.diameter / 2)
         self.rearspar_hole_center = center
 
         # 中心マーク
-        aoa = np.deg2rad(self.aoa)
-        left_point \
-            = center + dxfdrawer.direct(rearspar.diameter, aoa+np.pi)
-        right_point \
-            = center + dxfdrawer.direct(rearspar.diameter, aoa)
+        aoa = np.deg2rad(self.__aoa)
+        left_point = center + dxfdrawer.direct(rearspar.diameter, aoa + np.pi)
+        right_point = center + dxfdrawer.direct(rearspar.diameter, aoa)
         self.file.polyline([left_point, right_point])
 
-        upper_point \
-            = center + dxfdrawer.direct(rearspar.diameter, aoa+np.pi/2)
-        lower_point \
-            = center + dxfdrawer.direct(rearspar.diameter, aoa-np.pi/2)
+        upper_point = center + dxfdrawer.direct(rearspar.diameter, aoa + np.pi / 2)
+        lower_point = center + dxfdrawer.direct(rearspar.diameter, aoa - np.pi / 2)
         self.file.polyline([upper_point, lower_point])
 
         return True
@@ -269,16 +444,16 @@ class Rib:
         beam_ctr = self.beam_hole_center
         rearspar_ctr = self.rearspar_hole_center
 
-        bracing_hole_pos = self.bracing_hole_pos
+        bracing_hole_pos = self.__bracing_hole_pos
         centers = [
             dxfdrawer.divide([beam_ctr, rearspar_ctr], bracing_hole_pos),
-            dxfdrawer.divide([beam_ctr, rearspar_ctr], 1-bracing_hole_pos)
+            dxfdrawer.divide([beam_ctr, rearspar_ctr], 1 - bracing_hole_pos),
         ]
         if bracing_hole_pos == 0.5:
             centers = centers[:1]
 
         for center in centers:
-            self.file.circle(center, self.rearspar.diameter/2)
+            self.file.circle(center, self.__rearspar.diameter / 2)
 
         return True
 
@@ -301,9 +476,9 @@ class RibCollection:
         each_rib = []
         for row in table:
             rearspar = RearSpar(
-                dist_from_mainspar=row['rearspar']['dist'],
-                direction=row['rearspar']['angle'],
-                diameter=row['rearspar']['diameter']
+                row["rearspar"]["diameter"],
+                row["rearspar"]["dist"],
+                row["rearspar"]["angle"],
             )
             stringers = [
                 Stringer(
@@ -311,27 +486,27 @@ class RibCollection:
                     tan_width=config.tan_stringer_width,
                     norm_thickness=config.norm_stringer_thickness,
                     norm_width=config.norm_stringer_width,
-                    position=stringer_position
+                    position=stringer_position,
                 )
-                for stringer_position in row['stringer_positions']
+                for stringer_position in row["stringer_positions"]
             ]
             each_rib.append(
                 Rib(
-                    rib_name=row['rib_name'],
-                    airfoil_name0=row['airfoil0'],
-                    airfoil_name1=row['airfoil1'],
-                    mix_ratio=row['mix_ratio'],
-                    chord=row['chord'],
-                    aoa=row['aoa'],
-                    beam_hole_x=row['beam_hole_x'],
-                    beam_diameter=row['beam_diameter'],
+                    rib_name=row["rib_name"],
+                    airfoil_name0=row["airfoil0"],
+                    airfoil_name1=row["airfoil1"],
+                    mix_ratio=row["mix_ratio"],
+                    chord=row["chord"],
+                    aoa=row["aoa"],
+                    beam_hole_x=row["beam_hole_x"],
+                    beam_diameter=row["beam_diameter"],
                     rearspar=rearspar,
                     stringers=stringers,
-                    upper_plank_end_x=row['upper_plank_end_x'],
-                    lower_plank_end_x=row['lower_plank_end_x'],
-                    bracing_hole_pos=row['bracing_hole_pos'],
+                    upper_plank_end_x=row["upper_plank_end_x"],
+                    lower_plank_end_x=row["lower_plank_end_x"],
+                    bracing_hole_pos=row["bracing_hole_pos"],
                     plank_thickness=config.plank_thickness,
-                    ribcap_thickness=config.ribcap_thickness
+                    ribcap_thickness=config.ribcap_thickness,
                 )
             )
         self.each_rib = each_rib
@@ -342,15 +517,14 @@ class RibCollection:
         for rib in self.each_rib:
             if rib.airfoil_name0 not in airfoil_names:
                 airfoil_names.append(rib.airfoil_name0)
-            if (
-                rib.airfoil_name1 is not None
-                and (rib.airfoil_name1 not in airfoil_names)
+            if rib.airfoil_name1 is not None and (
+                rib.airfoil_name1 not in airfoil_names
             ):
                 airfoil_names.append(rib.airfoil_name1)
 
         airfoils = {}
         for airfoil_name in airfoil_names:
-            filepath = dir_path + airfoil_name + '.dat'
+            filepath = dir_path + airfoil_name + ".dat"
             airfoils[airfoil_name] = airfoilhandler.Airfoil(filepath=filepath)
 
         self.airfoils = airfoils
@@ -369,124 +543,4 @@ class RibCollection:
         """
         for rib in self.each_rib:
             rib.draw(save_directory, self.airfoils)
-        return
-
-
-class Stringer:
-    """
-    ストリンガーの諸元を管理するクラス.
-
-    T字に組んだものを想定して外形の接線方向を向くものをtan、
-    外形に垂直なものをnormとする
-    位置はx座標の翼弦に対する比で表して下面の場合は負とする
-
-    Attributes
-    ----------
-    tan_thickness : float
-    tan_width : float
-    norm_thickness : float
-    norm_width : float
-    position : float
-        ストリンガー代表位置(中央)のx座標の翼弦に対する比(0~1)
-        下面の場合は位置を-1倍して与える
-    """
-
-    def __init__(
-        self,
-        tan_thickness, tan_width,
-        norm_thickness, norm_width,
-        position
-    ):
-        """ストリンガの厚み等をセットする."""
-        self.tan_thickness = tan_thickness
-        self.tan_width = tan_width
-        self.norm_thickness = norm_thickness
-        self.norm_width = norm_width
-        self.position = position
-        return
-
-    def get_hole_nodes(self, chord, rib_outline):
-        """
-        ストリンガ穴描画用の点を取得する.
-
-        ストリンガはT字に組んだものを想定して凸字形の穴を描く
-        """
-        is_upper = np.sign(self.position)
-        stringer_x_abs = chord * np.abs(self.position)
-        # 点列を取得する(常に左から右の順)
-        if is_upper == 1:
-            points = rib_outline.get_points('upper')[::-1, :]
-        else:
-            points = rib_outline.get_points('lower')
-
-        left_point = points[points[:, 0] < stringer_x_abs][-1]
-        right_point = points[points[:, 0] > stringer_x_abs][0]
-        sandwiching_points = np.array([left_point, right_point])
-        pinned_point = np.array([
-            stringer_x_abs,
-            np.interp(
-                stringer_x_abs,
-                sandwiching_points[:, 0],
-                sandwiching_points[:, 1]
-            )
-        ])
-        theta = np.arctan2(
-            right_point[1]-left_point[1], right_point[0]-left_point[0]
-        )
-
-        hole_nodes = pinned_point.reshape((1, 2))
-        hole_nodes = dxfdrawer.append_next_point(
-            hole_nodes,
-            dxfdrawer.direct(self.tan_width/2, theta+np.pi)
-        )
-        hole_nodes = dxfdrawer.append_next_point(
-            hole_nodes,
-            dxfdrawer.direct(self.tan_thickness, theta-is_upper*np.pi/2)
-        )
-        hole_nodes = dxfdrawer.append_next_point(
-            hole_nodes,
-            dxfdrawer.direct((self.tan_width-self.norm_thickness)/2, theta)
-        )
-        hole_nodes = dxfdrawer.append_next_point(
-            hole_nodes,
-            dxfdrawer.direct(self.norm_width, theta-is_upper*np.pi/2)
-        )
-        hole_nodes = dxfdrawer.append_next_point(
-            hole_nodes,
-            dxfdrawer.direct(self.norm_thickness, theta)
-        )
-        hole_nodes = dxfdrawer.append_next_point(
-            hole_nodes,
-            dxfdrawer.direct(self.norm_width, theta+is_upper*np.pi/2)
-        )
-        hole_nodes = dxfdrawer.append_next_point(
-            hole_nodes,
-            dxfdrawer.direct((self.tan_width-self.norm_thickness)/2, theta)
-        )
-        hole_nodes = dxfdrawer.append_next_point(
-            hole_nodes,
-            dxfdrawer.direct(self.tan_thickness, theta+is_upper*np.pi/2)
-        )
-        return hole_nodes[1:]
-
-
-class RearSpar:
-    """リアスパ穴の描画に関わる変数をまとめるクラス."""
-
-    def __init__(self, diameter, dist_from_mainspar, direction):
-        """
-        リアスパ位置をまとめる.
-
-        Parameters
-        ----------
-        diameter : float
-        dist_from_mainspar : float
-            リアスパと主桁の中心間距離
-        direction : float
-            主副桁中心を結ぶ線分と翼弦線のなす角[deg]
-            翼弦に並行真後ろ向きを0として下向きを正とする(符号を入れ替えて保存する)
-        """
-        self.diameter = diameter
-        self.dist = dist_from_mainspar
-        self.theta = -np.deg2rad(direction)
         return

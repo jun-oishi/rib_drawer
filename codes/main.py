@@ -6,10 +6,10 @@ import ribhandler
 import csv
 import os
 
-DATA_DIRECTORY = os.path.dirname(__file__) + '/../data/'
-AIRFOIL_DIRECTORY = DATA_DIRECTORY + 'airfoils/'
-SAVE_DIRECTORY = DATA_DIRECTORY + 'figure/'
-CONFIG_DIRECTORY = DATA_DIRECTORY + 'config/'
+DATA_DIRECTORY: str = os.path.dirname(__file__) + "/../data/"
+AIRFOIL_DIRECTORY: str = DATA_DIRECTORY + "airfoils/"
+SAVE_DIRECTORY: str = DATA_DIRECTORY + "figure/"
+CONFIG_DIRECTORY: str = DATA_DIRECTORY + "config/"
 
 
 class Config:
@@ -17,7 +17,7 @@ class Config:
 
     def __init__(self, config_file_path):
         """設定ファイルを読み込む."""
-        with open(config_file_path, 'r', encoding='utf-8') as file:
+        with open(config_file_path, "r", encoding="utf-8") as file:
             reader = csv.reader(file)
             values = [line[2] for line in reader]
 
@@ -34,28 +34,28 @@ class Config:
 
     def read_rib_specs(self):
         """self.rib_file_path からリブの諸元を読み込む."""
-        with open(self.rib_file_path, mode='r', encoding='utf-8') as file:
+        with open(self.rib_file_path, mode="r", encoding="utf-8") as file:
             reader = csv.reader(file)
             table = [row for row in reader]
             table = [
                 {
-                    'rib_name': row[0],
-                    'airfoil0': row[1],
-                    'airfoil1': row[2],
-                    'mix_ratio': float(row[3]),
-                    'chord': float(row[4]),
-                    'aoa': float(row[5]),
-                    'beam_hole_x': float(row[6]),
-                    'beam_diameter': float(row[7]),
-                    'rearspar': {
-                        'dist': float(row[8]),
-                        'angle': float(row[9]),
-                        'diameter': float(row[10])
+                    "rib_name": row[0],
+                    "airfoil0": row[1],
+                    "airfoil1": row[2],
+                    "mix_ratio": float(row[3]),
+                    "chord": float(row[4]),
+                    "aoa": float(row[5]),
+                    "beam_hole_x": float(row[6]),
+                    "beam_diameter": float(row[7]),
+                    "rearspar": {
+                        "dist": float(row[8]),
+                        "angle": float(row[9]),
+                        "diameter": float(row[10]),
                     },
-                    'upper_plank_end_x': float(row[11]),
-                    'lower_plank_end_x': float(row[12]),
-                    'bracing_hole_pos': float(row[13]),
-                    'stringer_positions': [float(val) for val in row[14:]]
+                    "upper_plank_end_x": float(row[11]),
+                    "lower_plank_end_x": float(row[12]),
+                    "bracing_hole_pos": float(row[13]),
+                    "stringer_positions": [float(val) for val in row[14:]],
                 }
                 for row in table[2:]
             ]
@@ -73,8 +73,8 @@ def main(config_file_path):
 
     ribs.draw_each(config.save_directory)
 
-    print('process successfully completed')
+    print("process successfully completed")
 
 
-if __name__ == '__main__':
-    main(CONFIG_DIRECTORY+'config.csv')
+if __name__ == "__main__":
+    main(CONFIG_DIRECTORY + "config.csv")
