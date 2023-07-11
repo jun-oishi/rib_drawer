@@ -6,11 +6,13 @@ import airfoilhandler
 import dxfdrawer
 import numpy as np
 from scipy import interpolate
+import csv
+import os
 
 NUM_POINTS_TO_DRAW_OUTLINE = 200
 
 
-class Stringer:
+class _Stringer:
     """
     ストリンガーの諸元を管理するクラス.
 
@@ -108,7 +110,7 @@ class Stringer:
         return hole_nodes[1:]
 
 
-class RearSpar:
+class _RearSpar:
     """リアスパ穴の描画に関わる変数をまとめるクラス.
 
     Attributes
@@ -177,12 +179,12 @@ class Rib:
         上面プランク下端のx座標(chordに対する比)
     __lower_plank_end_x : float
         下面プランク下端のx座標(chordに対する比)
-    __stringers : list of Stringer
+    __stringers : list of _Stringer
     __beam_hole_x : float
         桁穴位置のx座標(chordに対する比)
     __beam_diameter : float
         桁穴径[mm]
-    __rearspar : RearSpar
+    __rearspar : _RearSpar
     __bracing_hole_pos : float
         ブレーシング穴位置のx座標(主桁-リアスパ間の距離に対する比)
     """
@@ -199,10 +201,10 @@ class Rib:
         ribcap_thickness: float,
         upper_plank_end_x: float,
         lower_plank_end_x: float,
-        stringers: list[Stringer],
+        stringers: list[_Stringer],
         beam_hole_x: float,
         beam_diameter: float,
-        rearspar: RearSpar,
+        rearspar: _RearSpar,
         bracing_hole_pos: float,
     ):
         """
@@ -263,16 +265,16 @@ class Rib:
             airfoil = airfoils[self.__airfoil_name0]
 
         self.file = dxfdrawer.newfile(save_directory + self.__name + ".dxf")
-        self.draw_wing_outline(airfoil)
-        self.draw_rib_outline()
-        self.draw_stringer_holes()
-        self.draw_main_beam_hole()
-        self.draw_rear_spar_hole()
-        self.draw_bracing_holes()
+        self.__draw_airfoil_outline(airfoil)
+        self.__draw_rib_outline()
+        self.__draw_stringer_holes()
+        self.__draw_main_beam_hole()
+        self.__draw_rearspar_hole()
+        self.__draw_bracing_holes()
         self.file.save()
         return True
 
-    def draw_wing_outline(self, airfoil):
+    def __draw_airfoil_outline(self, airfoil):
         """
         翼外形を描画する.
 
@@ -331,11 +333,11 @@ class Rib:
 
         return True
 
-    def draw_rib_outline(self):
+    def __draw_rib_outline(self):
         """
         リブの外形(翼型をプランク/リブキャップ分オフセットしたもの)を描画する.
 
-        wing_outline を利用するので draw_wing_outline の後の実行する
+        wing_outline を利用するので __draw_airfoil_outline の後の実行する
         ストリンガ穴、桁穴描画のために
         描画した点を rib_outline として Airfoil インスタンスで保存する
         """
@@ -369,14 +371,14 @@ class Rib:
 
         return True
 
-    def draw_stringer_holes(self):
+    def __draw_stringer_holes(self):
         """ストリンガの穴を描く."""
         for stringer in self.__stringers:
             self.file.polyline(stringer.get_hole_nodes(self.__chord, self.rib_outline))
 
         return True
 
-    def draw_main_beam_hole(self):
+    def __draw_main_beam_hole(self):
         """
         桁穴を描画する.
 
@@ -413,11 +415,11 @@ class Rib:
 
         return True
 
-    def draw_rear_spar_hole(self):
+    def __draw_rearspar_hole(self):
         """
         リアスパ穴を描画する.
 
-        主桁穴の位置を利用するので draw_main_beam_hole の後に実行する
+        主桁穴の位置を利用するので __draw_main_beam_hole の後に実行する
         ブレーシングの穴の描画で使うため中心の座標を rearspar_hole_center として保存する
         """
         rearspar = self.__rearspar
@@ -439,7 +441,7 @@ class Rib:
 
         return True
 
-    def draw_bracing_holes(self):
+    def __draw_bracing_holes(self):
         """ブレーシングワイヤの穴を描画する."""
         beam_ctr = self.beam_hole_center
         rearspar_ctr = self.rearspar_hole_center
@@ -461,36 +463,72 @@ class Rib:
 class RibCollection:
     """リブの集まりを扱うクラス."""
 
-    def __init__(self, table, config):
-        """
-        設定ファイルとリブの諸元を読み込む.
+    def load_config(self, config_dir: str, config_filename: str):
+        """設定ファイルを読み込む."""
+        path = os.path.join(config_dir, config_filename)
+        with open(path, "r", encoding="utf-8") as file:
+            reader = csv.reader(file)
+            values = [line[2] for line in reader]
 
-        Attributes
-        ----------
-        table : list of dict
-            リブのデータ
-        config : Config
-            各リブに共通の情報やその他の設定情報をもつオブジェクト
-            XXX: main.py で定義したクラスなので依存関係が...
-        """
-        each_rib = []
+        self.__ribdata_filename = values[0]
+        self.__plank_thickness = float(values[1])
+        self.__ribcap_thickness = float(values[2])
+        self.__tan_stringer_thickness = float(values[3])
+        self.__tan_stringer_width = float(values[4])
+        self.__norm_stringer_thickness = float(values[5])
+        self.__norm_stringer_width = float(values[6])
+
+        self.__load_ribdata(config_dir)
+
+    def __load_ribdata(self, dir_name: str):
+        """"""
+        path = os.path.join(dir_name, self.__ribdata_filename)
+        with open(path, mode="r", encoding="utf-8") as file:
+            reader = csv.reader(file)
+            table = [row for row in reader]
+            table = [
+                {
+                    "rib_name": row[0],
+                    "airfoil0": row[1],
+                    "airfoil1": row[2],
+                    "mix_ratio": float(row[3]),
+                    "chord": float(row[4]),
+                    "aoa": float(row[5]),
+                    "beam_hole_x": float(row[6]),
+                    "beam_diameter": float(row[7]),
+                    "rearspar": {
+                        "dist": float(row[8]),
+                        "angle": float(row[9]),
+                        "diameter": float(row[10]),
+                    },
+                    "upper_plank_end_x": float(row[11]),
+                    "lower_plank_end_x": float(row[12]),
+                    "bracing_hole_pos": float(row[13]),
+                    "stringer_positions": [float(val) for val in row[14:]],
+                }
+                for row in table[2:]
+            ]
+        self.__set_ribdata(table)
+
+    def __set_ribdata(self, table):
+        ribs = []
         for row in table:
-            rearspar = RearSpar(
+            rearspar = _RearSpar(
                 row["rearspar"]["diameter"],
                 row["rearspar"]["dist"],
                 row["rearspar"]["angle"],
             )
             stringers = [
-                Stringer(
-                    tan_thickness=config.tan_stringer_thickness,
-                    tan_width=config.tan_stringer_width,
-                    norm_thickness=config.norm_stringer_thickness,
-                    norm_width=config.norm_stringer_width,
+                _Stringer(
+                    tan_thickness=self.__tan_stringer_thickness,
+                    tan_width=self.__tan_stringer_width,
+                    norm_thickness=self.__norm_stringer_thickness,
+                    norm_width=self.__norm_stringer_width,
                     position=stringer_position,
                 )
                 for stringer_position in row["stringer_positions"]
             ]
-            each_rib.append(
+            ribs.append(
                 Rib(
                     rib_name=row["rib_name"],
                     airfoil_name0=row["airfoil0"],
@@ -505,16 +543,16 @@ class RibCollection:
                     upper_plank_end_x=row["upper_plank_end_x"],
                     lower_plank_end_x=row["lower_plank_end_x"],
                     bracing_hole_pos=row["bracing_hole_pos"],
-                    plank_thickness=config.plank_thickness,
-                    ribcap_thickness=config.ribcap_thickness,
+                    plank_thickness=self.__plank_thickness,
+                    ribcap_thickness=self.__ribcap_thickness,
                 )
             )
-        self.each_rib = each_rib
+        self.__ribs = ribs
 
     def read_unique_airfoils(self, dir_path):
         """必要な翼型のdatファイルを読み込む."""
         airfoil_names = []
-        for rib in self.each_rib:
+        for rib in self.__ribs:
             if rib.airfoil_name0 not in airfoil_names:
                 airfoil_names.append(rib.airfoil_name0)
             if rib.airfoil_name1 is not None and (
@@ -541,6 +579,6 @@ class RibCollection:
             ファイルを保存するフォルダのパス
             '/'で終わる形
         """
-        for rib in self.each_rib:
+        for rib in self.__ribs:
             rib.draw(save_directory, self.airfoils)
         return
