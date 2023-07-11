@@ -4,6 +4,24 @@
 
 import numpy as np
 import ezdxf
+from ezdxf.colors import (
+    BYBLOCK,
+    BYLAYER,
+    BYOBJECT,
+    RED,
+    YELLOW,
+    GREEN,
+    CYAN,
+    BLUE,
+    MAGENTA,
+    BLACK,
+    WHITE,
+    GRAY,
+    LIGHT_GRAY,
+)
+from ezdxf.enums import TextEntityAlignment as TextAlign
+
+DEFAULT_TEXTCOLOR = RED
 
 
 def direct(dist, theta):
@@ -117,15 +135,8 @@ class DxfFile:
         ----------
         points : array of array of two floats
             ポリラインを定義する点の座標の配列
-
-        Return
-        ------
-        True
-            正常に完了したら
         """
-
         self.__msp.add_lwpolyline(points)
-        return True
 
     def circle(self, pos_center, radius):
         """
@@ -137,11 +148,15 @@ class DxfFile:
             中心の座標
         radius : float
             半径
-
-        Return
-        ------
-        True
-            正常に完了したら
         """
         self.__msp.add_circle(pos_center, radius)
-        return True
+
+    def text(
+        self, content: str, pos: np.ndarray = np.array([0, 0]), rotation_deg: float = 0
+    ):
+        self.__msp.add_text(
+            content,
+            height=10,
+            rotation=rotation_deg,
+            dxfattribs={"color": DEFAULT_TEXTCOLOR},
+        ).set_placement(pos, align=TextAlign.LEFT)

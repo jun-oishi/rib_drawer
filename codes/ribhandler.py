@@ -264,14 +264,15 @@ class Rib:
         else:
             airfoil = airfoils[self.__airfoil_name0]
 
-        self.file = dxfdrawer.newfile(save_directory + self.__name + ".dxf")
+        self.__file = dxfdrawer.newfile(save_directory + self.__name + ".dxf")
         self.__draw_airfoil_outline(airfoil)
         self.__draw_rib_outline()
         self.__draw_stringer_holes()
         self.__draw_main_beam_hole()
+        self.__write_ribname()
         self.__draw_rearspar_hole()
         self.__draw_bracing_holes()
-        self.file.save()
+        self.__file.save()
         return True
 
     def __draw_airfoil_outline(self, airfoil):
@@ -325,9 +326,9 @@ class Rib:
         interpolated_points = np.concatenate([interpolated_points, [[1, 0]]])
         scaled = interpolated_points * self.__chord
 
-        self.file.polyline(scaled)
+        self.__file.polyline(scaled)
         chordline = np.array([[0, 0], scaled[0]])
-        self.file.polyline(chordline)
+        self.__file.polyline(chordline)
 
         self.wing_outline = airfoilhandler.Airfoil(points=scaled)
 
@@ -365,7 +366,7 @@ class Rib:
 
         # TODO: 後縁付近を線形補間で上手いことやって閉じたポリラインにしたい
 
-        self.file.polyline(rib_outline)
+        self.__file.polyline(rib_outline)
 
         self.rib_outline = airfoilhandler.Airfoil(points=rib_outline)
 
@@ -374,7 +375,9 @@ class Rib:
     def __draw_stringer_holes(self):
         """ストリンガの穴を描く."""
         for stringer in self.__stringers:
-            self.file.polyline(stringer.get_hole_nodes(self.__chord, self.rib_outline))
+            self.__file.polyline(
+                stringer.get_hole_nodes(self.__chord, self.rib_outline)
+            )
 
         return True
 
@@ -382,7 +385,7 @@ class Rib:
         """
         桁穴を描画する.
 
-        リアスパ穴の描画等で使うため桁穴中心座標を beam_hole_center として保存する
+        リアスパ穴の描画等で使うため桁穴中心座標を __beam_hole_center として保存する
         """
         center_x_abs = self.__beam_hole_x * self.__chord
         upper_points = self.rib_outline.get_points("upper")
@@ -393,27 +396,30 @@ class Rib:
         center_y = (upper_y + lower_y) / 2
 
         beam_hole_center = np.array([center_x_abs, center_y])
-        self.beam_hole_center = beam_hole_center
-        self.file.circle(beam_hole_center, self.__beam_diameter / 2)
+        self.__beam_hole_center = beam_hole_center
+        self.__file.circle(beam_hole_center, self.__beam_diameter / 2)
 
         # 水平線、垂直線を描く
         aoa = np.deg2rad(self.__aoa)
-        left_point = self.beam_hole_center + dxfdrawer.direct(
+        left_point = self.__beam_hole_center + dxfdrawer.direct(
             self.__chord * self.__beam_hole_x * 1.2, aoa + np.pi
         )
         right_point = left_point + dxfdrawer.direct(self.__chord * 1.2, aoa)
-        self.file.polyline([left_point, right_point])
+        self.__file.polyline([left_point, right_point])
 
         thickness = upper_y - lower_y
-        upper_point = self.beam_hole_center + dxfdrawer.direct(
+        upper_point = self.__beam_hole_center + dxfdrawer.direct(
             thickness, aoa + np.pi / 2
         )
-        lower_point = self.beam_hole_center + dxfdrawer.direct(
+        lower_point = self.__beam_hole_center + dxfdrawer.direct(
             thickness, aoa - np.pi / 2
         )
-        self.file.polyline([upper_point, lower_point])
+        self.__file.polyline([upper_point, lower_point])
 
         return True
+
+    def __write_ribname(self):
+        self.__file.text(self.__name, self.__beam_hole_center, self.__aoa)
 
     def __draw_rearspar_hole(self):
         """
@@ -423,27 +429,27 @@ class Rib:
         ブレーシングの穴の描画で使うため中心の座標を rearspar_hole_center として保存する
         """
         rearspar = self.__rearspar
-        center = self.beam_hole_center + dxfdrawer.direct(
+        center = self.__beam_hole_center + dxfdrawer.direct(
             rearspar.dist, np.deg2rad(rearspar.theta)
         )
-        self.file.circle(center, rearspar.diameter / 2)
+        self.__file.circle(center, rearspar.diameter / 2)
         self.rearspar_hole_center = center
 
         # 中心マーク
         aoa = np.deg2rad(self.__aoa)
         left_point = center + dxfdrawer.direct(rearspar.diameter, aoa + np.pi)
         right_point = center + dxfdrawer.direct(rearspar.diameter, aoa)
-        self.file.polyline([left_point, right_point])
+        self.__file.polyline([left_point, right_point])
 
         upper_point = center + dxfdrawer.direct(rearspar.diameter, aoa + np.pi / 2)
         lower_point = center + dxfdrawer.direct(rearspar.diameter, aoa - np.pi / 2)
-        self.file.polyline([upper_point, lower_point])
+        self.__file.polyline([upper_point, lower_point])
 
         return True
 
     def __draw_bracing_holes(self):
         """ブレーシングワイヤの穴を描画する."""
-        beam_ctr = self.beam_hole_center
+        beam_ctr = self.__beam_hole_center
         rearspar_ctr = self.rearspar_hole_center
 
         bracing_hole_pos = self.__bracing_hole_pos
@@ -455,7 +461,7 @@ class Rib:
             centers = centers[:1]
 
         for center in centers:
-            self.file.circle(center, self.__rearspar.diameter / 2)
+            self.__file.circle(center, self.__rearspar.diameter / 2)
 
         return True
 
