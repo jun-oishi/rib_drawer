@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rib_drawer"
+version = "1.0.0"
+authors = [
+    {name="Junnosuke Oishi"},
+]
+description = "tools for rib master drawing"
+# license = "MIT"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy >= 1.25",
+    "scipy >= 1.0",
+    "ezdxf >= 1.3.3"
+]
+
+[project.scripts]
+# command = "mod.submod:func"
+
+[project.optional-dependencies]
+dev = [
+    "ruff >= 0.6.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
+exclude = []

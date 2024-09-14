@@ -5,7 +5,7 @@
 import ribhandler
 import os
 
-DATA_DIRECTORY: str = os.path.dirname(__file__) + "/../data/"
+DATA_DIRECTORY: str = os.path.dirname(__file__) + "/../../data/"
 AIRFOIL_DIRECTORY: str = DATA_DIRECTORY + "airfoils/"
 SAVE_DIRECTORY: str = DATA_DIRECTORY + "figure/"
 CONFIG_DIRECTORY: str = DATA_DIRECTORY + "config/"
