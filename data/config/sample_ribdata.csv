@@ -1,4 +1,4 @@
-rib name,airfoil name 1,airfoil name 2,mixture ratio,chord,angle of atack,beam position x,beam diameter,distance between main and rear spars,angle of rearspar,rearspar diameter,upper plank end x,lower plank end x,position of bracing wire hole,stringer position x 1,stringer position x 2,stringer position x 3
-used for file name,,,"0-1, 1 for pure airfoil 1",[mm],[deg],devided by chord,[mm],[mm],angle[deg] from horizontal line,[mm],devided by chord,devided by chord,0-1,devided by chord,devided by chord,devided by chord
+rib name,airfoil name 1,airfoil name 2,mixture ratio,chord,angle of attack,beam position x,beam diameter,distance between main and rear spars,angle of rearspar,rearspar diameter,upper plank end x,lower plank end x,position of bracing wire hole,stringer position x 1,stringer position x 2,stringer position x 3
+used for file name,,,"0-1, 1 for pure airfoil 1",[mm],[deg],divided by chord,[mm],[mm],angle[deg] from horizontal line,[mm],divided by chord,divided by chord,0-1,divided by chord,divided by chord,divided by chord
 1-1,DAE31,DAE31,1,1017,5,0.38,102.08,327,9.3,16,0.65,0.12,0.2,-0.1,0.1,0.63
 1-2,DAE31,,1,1000,4,0.38,102.08,327,9.3,16,0.65,0.12,0.4,-0.1,0.1,0.63
